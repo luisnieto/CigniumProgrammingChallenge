@@ -9,95 +9,185 @@ namespace CigniumProgrammingChallenge
 {
     class Program
     {
-        private const string SEARCH_PATTERN_ENGIENS = @"[a-zA-Z ]+: \d+";
-        private const char CHARACTER_SPLIT_ELEMENTS = ':';
+        private const string seGoogle = "Google";
+        private const string seBing = "MSN Search";
 
         static void Main(string[] args)
         {
             var mostTermSearch = string.Empty;
-            var mostCountSearch = 0L;
+
+            // Create the basic struture data
+            var rankingData = new RankingSearchsBE(seGoogle, seBing);
 
             // Get the dictory to store the data
-            var data = GetDictionary(args);
+            rankingData.InitializeTerm(args.ToList());
 
             // Get the information
             foreach (var item in args)
             {
                 var termLine = Console.ReadLine();
-
-                // Get word to process
-                var term = GetProcessTerm(termLine);
-
-                // Get engiens to process
-                var searchElement = GetHigherSearchEngien(termLine);
-                data[term] = searchElement.Item1;
-
-                // Determinate the higher search element
-                if (mostCountSearch < searchElement.Item2)
-                {
-                    mostTermSearch = term;
-                    mostCountSearch = searchElement.Item2;
-                }
+                rankingData.AddDataSearch(termLine);
             }
 
             // Print the results
-            foreach (var key in data.Keys)
+            foreach (var engien in rankingData.Engiens)
             {
-                Console.WriteLine(string.Format("{0} winner: {1}", data[key].Description, key));
+                var termsWinner = engien.Terms.Where(x => x.Winner).Select(x => x.Description);
+                var termsDescription = termsWinner.Any()
+                    ? string.Join(", ", termsWinner)
+                    : "none";
+
+                Console.WriteLine(string.Format("{0} winner: {1}", engien.Description, termsDescription));
             }
 
-            Console.WriteLine(string.Format("Total winner: {0}", mostTermSearch));
+            Console.WriteLine(string.Format("Total winner: {0}", rankingData.GetMostSearchTerm()));
         }
+    }
 
-        public static Dictionary<string, EngienBE> GetDictionary(IList<string> wordsSearch)
+    public class RankingSearchsBE
+    {
+        // constants
+        private const string SEARCH_PATTERN_ENGIENS = @"[a-zA-Z ]+: \d+";
+        private const char CHARACTER_SPLIT_ELEMENTS = ':';
+
+        // constructor
+        public RankingSearchsBE(params string[] searchEngiens)
         {
-            var response = new Dictionary<string, EngienBE>();
+            this.Engiens = new List<EngienBE>();
 
-            foreach (var item in wordsSearch)
+            foreach (var searchEngien in searchEngiens)
             {
-                response.Add(item, new EngienBE());
+                Engiens.Add(new EngienBE(searchEngien));
             }
-
-            return response;
         }
 
-        public static string GetProcessTerm(string input)
-        {
-            return input.Split(CHARACTER_SPLIT_ELEMENTS)[0];
-        }
+        // properties
+        public List<EngienBE> Engiens { get; }
 
-        public static Tuple<EngienBE, long> GetHigherSearchEngien(string input)
+        // methods
+        public void InitializeTerm(List<string> terms)
         {
-            var engiens = Regex.Matches(input, SEARCH_PATTERN_ENGIENS);
-            var engienBE = new EngienBE();
-            var searchSum = 0L;
-
-            foreach (var engien in engiens)
+            foreach (var engien in Engiens)
             {
-                var elements = engien.ToString().Split(CHARACTER_SPLIT_ELEMENTS);
+                engien.Terms.Clear();
+
+                foreach (var term in terms)
+                {
+                    engien.Terms.Add(new TermBE() { Description = term });
+                }
+            }
+        }
+
+        public void AddDataSearch(string input)
+        {
+            var termDescripcion = GetProcessTerm(input);
+            var engienSections = Regex.Matches(input, SEARCH_PATTERN_ENGIENS);
+
+            foreach (var engienData in engienSections)
+            {
+                var elements = engienData.ToString().Split(CHARACTER_SPLIT_ELEMENTS);
 
                 if (elements.Count() >= 2)
                 {
+                    var engienDescription = elements[0].Trim();
                     var searchs = Convert.ToInt64(elements[1].Trim());
-                    searchSum += searchs;
 
-                    if (searchs > engienBE.CountSearchs)
+                    var engien = this.Engiens.FirstOrDefault(x => x.Description.Equals(engienDescription, StringComparison.OrdinalIgnoreCase));
+
+                    if (engien != null)
                     {
-                        engienBE.Description = elements[0].Trim();
-                        engienBE.CountSearchs = searchs;
+                        var term = engien.Terms.FirstOrDefault(x => x.Description.Equals(termDescripcion, StringComparison.OrdinalIgnoreCase));
+
+                        if (term != null)
+                        {
+                            term.AmountSearch = searchs;
+                        }
                     }
                 }
             }
 
-            return Tuple.Create(engienBE, searchSum);
+            CalculateTermWinner(termDescripcion);
+        }
+
+        public string GetMostSearchTerm()
+        {
+            var termDescription = string.Empty;
+
+            if (!this.Engiens.Any())
+            {
+                return termDescription;
+            }
+
+            var terms = this.Engiens.First().Terms.Select(x => new TermBE() { Description = x.Description }).ToList();
+
+            foreach (var engien in this.Engiens)
+            {
+                foreach (var term in engien.Terms)
+                {
+                    terms.First(x => x.Description.Equals(term.Description)).AmountSearch += term.AmountSearch;
+                }
+            }
+
+            var maxAmountSearch = terms.Max(x => x.AmountSearch);
+            termDescription = terms.First(x => x.AmountSearch == maxAmountSearch).Description;
+
+            return termDescription;
+        }
+
+        // private methods
+        private void CalculateTermWinner(string termDescription)
+        {
+            if (!this.Engiens.Any())
+            {
+                return;
+            }
+
+            var maxAmountSearch = 0L;
+            var descriptionEngieWinner = string.Empty;
+
+            foreach (var engien in this.Engiens)
+            {
+                var term = engien.Terms.FirstOrDefault(x => x.Description.Equals(termDescription, StringComparison.OrdinalIgnoreCase));
+
+                if (term != null && term.AmountSearch > maxAmountSearch)
+                {
+                    maxAmountSearch = term.AmountSearch;
+                    descriptionEngieWinner = engien.Description;
+                }
+            }
+
+            if (!string.IsNullOrEmpty(descriptionEngieWinner))
+            {
+                this.Engiens.First(x => x.Description.Equals(descriptionEngieWinner)).Terms.First(x => x.Description.Equals(termDescription, StringComparison.OrdinalIgnoreCase)).Winner = true;
+            }
+        }
+
+        private string GetProcessTerm(string input)
+        {
+            return input.Split(CHARACTER_SPLIT_ELEMENTS)[0];
         }
     }
 
     public class EngienBE
     {
+        public EngienBE(string description)
+        {
+            this.Description = description;
+            this.Terms = new List<TermBE>();
+        }
+
+        public string Description { get; }
+
+        public List<TermBE> Terms { get; set; }
+    }
+
+    public class TermBE
+    {
         public string Description { get; set; }
 
-        public long CountSearchs { get; set; }
+        public long AmountSearch { get; set; }
+
+        public bool Winner { get; set; }
     }
 }
 
